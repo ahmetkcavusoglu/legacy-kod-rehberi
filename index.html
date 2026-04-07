@@ -1,0 +1,690 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Devraldığın Sistemi Patlatmadan Yönetmek</title>
+<meta name="description" content="Legacy kod devralmanın 5 aşamalı teknik rehberi. Triage, test, Strangler Fig, hotspot analizi ve ADR.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=JetBrains+Mono:wght@400;500&family=Sora:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #0e0f11;
+  --surface: #16181c;
+  --border: #272930;
+  --border-soft: #1e2026;
+  --text: #e8e6e1;
+  --muted: #7a7d85;
+  --accent: #c8a96e;
+  --accent-dim: #8a6e3e;
+  --red: #e05a5a;
+  --amber: #d4913a;
+  --green: #5aab7a;
+  --gray: #5a5e6a;
+  --code-bg: #111317;
+  --quote-border: #c8a96e;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+html { scroll-behavior: smooth; }
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Sora', sans-serif;
+  font-size: 16px;
+  line-height: 1.75;
+  font-weight: 300;
+}
+
+/* PROGRESS BAR */
+#progress {
+  position: fixed;
+  top: 0; left: 0;
+  height: 2px;
+  width: 0%;
+  background: var(--accent);
+  z-index: 100;
+  transition: width 0.1s linear;
+}
+
+/* HEADER */
+header {
+  border-bottom: 1px solid var(--border);
+  padding: 1.2rem 2rem;
+  position: sticky;
+  top: 0;
+  background: rgba(14, 15, 17, 0.92);
+  backdrop-filter: blur(12px);
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.header-tag {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  color: var(--accent);
+  letter-spacing: 0.08em;
+}
+
+.header-meta {
+  font-size: 11px;
+  color: var(--muted);
+  font-weight: 400;
+}
+
+/* LAYOUT */
+.container {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 0 1.5rem;
+}
+
+/* HERO */
+.hero {
+  padding: 5rem 0 3.5rem;
+  border-bottom: 1px solid var(--border-soft);
+  margin-bottom: 3.5rem;
+}
+
+.kicker {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  letter-spacing: 0.2em;
+  color: var(--accent);
+  text-transform: uppercase;
+  margin-bottom: 1.5rem;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.kicker::before {
+  content: '';
+  display: inline-block;
+  width: 24px;
+  height: 1px;
+  background: var(--accent);
+}
+
+h1 {
+  font-family: 'Instrument Serif', serif;
+  font-size: clamp(2rem, 5vw, 3.2rem);
+  font-weight: 400;
+  line-height: 1.15;
+  color: var(--text);
+  margin-bottom: 1.2rem;
+  letter-spacing: -0.01em;
+}
+
+.subhead {
+  font-family: 'Instrument Serif', serif;
+  font-style: italic;
+  font-size: clamp(1rem, 2.5vw, 1.2rem);
+  color: var(--muted);
+  line-height: 1.6;
+  margin-bottom: 2rem;
+  max-width: 580px;
+}
+
+.meta-row {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  font-size: 11px;
+  color: var(--muted);
+  font-family: 'JetBrains Mono', monospace;
+}
+
+.meta-row span { padding: 0 10px; }
+.meta-row span:first-child { padding-left: 0; }
+.meta-sep { color: var(--border); }
+
+/* ARTICLE BODY */
+.article-body { padding-bottom: 6rem; }
+
+p {
+  margin-bottom: 1.4rem;
+  color: var(--text);
+  font-weight: 300;
+}
+
+/* SECTION */
+.section {
+  margin: 3.5rem 0 0;
+  padding-top: 3rem;
+  border-top: 1px solid var(--border-soft);
+  opacity: 0;
+  transform: translateY(16px);
+  transition: opacity 0.5s ease, transform 0.5s ease;
+}
+
+.section.visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.section-num {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  letter-spacing: 0.2em;
+  color: var(--accent-dim);
+  text-transform: uppercase;
+  margin-bottom: 0.5rem;
+}
+
+h2 {
+  font-family: 'Instrument Serif', serif;
+  font-size: clamp(1.4rem, 3.5vw, 2rem);
+  font-weight: 400;
+  color: var(--text);
+  margin-bottom: 1.4rem;
+  line-height: 1.25;
+}
+
+/* BLOCKQUOTE */
+blockquote {
+  border-left: 2px solid var(--quote-border);
+  padding: 0.8rem 0 0.8rem 1.5rem;
+  margin: 2rem 0;
+}
+
+blockquote p {
+  font-family: 'Instrument Serif', serif;
+  font-style: italic;
+  font-size: 1.1rem;
+  color: var(--text);
+  margin-bottom: 0.5rem;
+  line-height: 1.6;
+}
+
+blockquote cite {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  color: var(--muted);
+  font-style: normal;
+  letter-spacing: 0.04em;
+}
+
+/* CODE */
+pre {
+  background: var(--code-bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 1.25rem 1.4rem;
+  margin: 1.5rem 0;
+  overflow-x: auto;
+  position: relative;
+}
+
+pre::before {
+  content: attr(data-lang);
+  position: absolute;
+  top: 10px;
+  right: 14px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  color: var(--muted);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+code {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 13px;
+  line-height: 1.7;
+  color: #c9c5bb;
+}
+
+p code, li code {
+  background: var(--code-bg);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 1px 6px;
+  font-size: 12.5px;
+  color: var(--accent);
+}
+
+/* SYNTAX COLORS */
+.kw { color: #d4913a; }
+.cm { color: #4a4f5e; font-style: italic; }
+.ty { color: #7ab0d4; }
+.st { color: #7aab8a; }
+.num { color: #c8a96e; }
+.fn { color: #b8a0d4; }
+.pp { color: #d47a7a; }
+
+/* LISTS */
+ul, ol {
+  padding-left: 1.4rem;
+  margin: 1rem 0 1.4rem;
+}
+
+li {
+  margin-bottom: 0.5rem;
+  color: var(--text);
+  font-weight: 300;
+}
+
+li strong { font-weight: 500; color: var(--text); }
+
+/* RISK TABLE */
+.risk-grid {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 0;
+  margin: 1.5rem 0;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.risk-row {
+  display: contents;
+}
+
+.risk-row > div {
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border-soft);
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.risk-row:last-child > div { border-bottom: none; }
+
+.risk-row:nth-child(even) > div { background: rgba(255,255,255,0.015); }
+
+.risk-label {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 3px;
+  white-space: nowrap;
+  font-weight: 500;
+}
+
+.risk-critical { background: rgba(224,90,90,0.15); color: var(--red); }
+.risk-important { background: rgba(212,145,58,0.15); color: var(--amber); }
+.risk-improve { background: rgba(90,171,122,0.15); color: var(--green); }
+.risk-cosmetic { background: rgba(90,94,106,0.2); color: var(--gray); }
+
+.risk-priority {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+/* REFS */
+.refs {
+  margin-top: 3.5rem;
+  padding-top: 2.5rem;
+  border-top: 1px solid var(--border);
+}
+
+.refs-title {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  letter-spacing: 0.2em;
+  color: var(--muted);
+  text-transform: uppercase;
+  margin-bottom: 1.2rem;
+}
+
+.ref-item {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 0.8rem;
+  font-size: 13.5px;
+}
+
+.ref-n {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  color: var(--accent-dim);
+  min-width: 20px;
+  padding-top: 2px;
+  flex-shrink: 0;
+}
+
+.ref-item a {
+  color: var(--accent);
+  text-decoration: none;
+  border-bottom: 1px solid var(--accent-dim);
+  transition: border-color 0.2s;
+}
+
+.ref-item a:hover { border-color: var(--accent); }
+
+/* FOOTER */
+footer {
+  border-top: 1px solid var(--border);
+  padding: 2rem;
+  text-align: center;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  color: var(--muted);
+  letter-spacing: 0.05em;
+}
+
+/* TOC */
+.toc {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 1.2rem 1.4rem;
+  margin: 2rem 0 3rem;
+  font-size: 13.5px;
+}
+
+.toc-title {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  letter-spacing: 0.2em;
+  color: var(--muted);
+  text-transform: uppercase;
+  margin-bottom: 0.8rem;
+}
+
+.toc ol { margin: 0; padding-left: 1.2rem; }
+.toc li { margin-bottom: 0.3rem; }
+.toc a { color: var(--muted); text-decoration: none; transition: color 0.2s; }
+.toc a:hover { color: var(--accent); }
+
+/* RESPONSIVE */
+@media (max-width: 600px) {
+  header { padding: 1rem 1.2rem; }
+  .hero { padding: 3rem 0 2.5rem; }
+  .risk-grid { grid-template-columns: 1fr; }
+  .risk-row > div:last-child { display: none; }
+}
+</style>
+</head>
+<body>
+
+<div id="progress"></div>
+
+<header>
+  <span class="header-tag">// legacy-kod-rehberi</span>
+  <span class="header-meta">Nisan 2026</span>
+</header>
+
+<main>
+<div class="container">
+
+  <div class="hero">
+    <div class="kicker">Yazılım Mühendisliği · Pratik Rehber</div>
+    <h1>Devraldığın Sistemi<br>Patlatmadan Yönetmek</h1>
+    <p class="subhead">Legacy kod, her yazılımcının er ya da geç yüzleştiği bir gerçek. Peki bu labirentin içinde nasıl kaybolunmaz?</p>
+    <div class="meta-row">
+      <span>Teknik Makale</span>
+      <span class="meta-sep">·</span>
+      <span>Nisan 2026</span>
+      <span class="meta-sep">·</span>
+      <span>~8 dk okuma</span>
+    </div>
+  </div>
+
+  <div class="article-body">
+
+    <p>Reddit'te bir yazılımcı şöyle yazmıştı: <em>"Sıfır dokümantasyonlu, bir iş arkadaşından devralacağım bir .NET Core + Knockout.js projesi var. Nereden başlayacağımı bilmiyorum."</em> Bu his evrensel. Hangi dili, hangi platformu, hangi sektörü kullansanız — bir gün birinin bıraktığı sistemi devralmak zorunda kalırsınız.</p>
+
+    <p>Embedded sistemlerde bu durum özellikle ağır hissettiriyor. Belgesiz register konfigürasyonları, magic number'larla dolu interrupt handler'lar, kimsenin dokunmaya cesaret edemediği clock tree ayarları. Ve en kötüsü: <strong>"çalışıyor, dokunma"</strong> kültürü.</p>
+
+    <div class="toc">
+      <div class="toc-title">İçindekiler</div>
+      <ol>
+        <li><a href="#s1">Triage — Sistemi Tanı, Dokunma</a></li>
+        <li><a href="#s2">Güvenlik Ağı — Önce Test, Sonra Değişiklik</a></li>
+        <li><a href="#s3">Strangler Fig Pattern — Boğmadan Değiştir</a></li>
+        <li><a href="#s4">Hotspot Analizi — Doğru Şeyi Düzelt</a></li>
+        <li><a href="#s5">ADR — Sonraki Geliştiriciyi Kurtar</a></li>
+      </ol>
+    </div>
+
+    <!-- SECTION 1 -->
+    <div class="section" id="s1">
+      <div class="section-num">Aşama 01</div>
+      <h2>Triage — Sistemi Tanı, Dokunma</h2>
+
+      <p>Deneyimli yazılımcıların hemen hemen hepsi aynı ilk tavsiyede hemfikir: <strong>ilk hafta hiçbir şeyi değiştirme.</strong> Orta-büyük ölçekli bir legacy codebase'i gerçekten tanımak 6 ila 12 ay alır. Hemen "şunu düzelteceğim" refleksiyle başlamak, genellikle felakete davet çıkarmaktır.</p>
+
+      <blockquote>
+        <p>"Legacy sistemler temizlenmiş bir sızdıran boru gibidir. Kirliliği giderdiğin an fışkırır. Küçük bir bug'ı düzeltirsin, aniden tüm kapaklar açılır."</p>
+        <cite>— Erik Dietrich, DaedTech</cite>
+      </blockquote>
+
+      <p>İlk hafta şunlara odaklan:</p>
+
+      <ul>
+        <li>En sık değişen dosyaları tespit et: <code>git log --stat</code></li>
+        <li>Magic number'ları ve açıklamasız sabitleri listele</li>
+        <li><em>"Dokunma çalışıyor"</em> yorumlarını işaretle</li>
+        <li>Dead code bloklarını not et</li>
+        <li>Static analiz aracı çalıştır: <code>cppcheck</code>, <code>PC-lint</code></li>
+      </ul>
+
+      <pre data-lang="C"><code><span class="cm">// Bir legacy codebase'de karşılaşılan tipik kod kokuları</span>
+
+<span class="cm">// 1. Global değişken cehennemi</span>
+<span class="kw">volatile</span> <span class="ty">uint32_t</span> g_flag1, g_flag2, g_flag_bak, g_flag_bak2;
+
+<span class="cm">// 2. Magic number</span>
+<span class="kw">if</span> (status == <span class="num">0x3F</span>) { ... }  <span class="cm">// Ne anlama geliyor?</span>
+
+<span class="cm">// 3. "Dokunma çalışıyor" yorumu</span>
+<span class="cm">// HAL_Delay(50); // BU OLMADAN ÇALIŞMIYOR - NEDENİNİ BİLMİYORUM</span></code></pre>
+
+      <p>Bu haritayı çıkarmadan müdahale etmek, gözü bağlı ameliyat yapmak gibidir.</p>
+    </div>
+
+    <!-- SECTION 2 -->
+    <div class="section" id="s2">
+      <div class="section-num">Aşama 02</div>
+      <h2>Güvenlik Ağı — Önce Test, Sonra Değişiklik</h2>
+
+      <p>Michael Feathers, <em>Working Effectively with Legacy Code</em> kitabında <strong>"seam"</strong> (dikiş noktası) kavramını tanımlar: kodda test ekleyebileceğin, müdahale edebileceğin izole noktalar. Legacy kod çoğunlukla unit test içermediğinden, değişiklik yaparken kör uçuyorsunuzdur.</p>
+
+      <p>Embedded sistemlerde tam unit test zordur, ama imkânsız değildir. Pratik yaklaşım:</p>
+
+      <ol>
+        <li>Donanımdan bağımsız, saf fonksiyonları tespit et (CRC, protokol parsing, buffer mantığı)</li>
+        <li>HAL bağımlılıklarını mock'la</li>
+        <li>Her dokunduğun fonksiyona önce test yaz, sonra değiştir</li>
+      </ol>
+
+      <pre data-lang="C"><code><span class="cm">// unity veya cmocka ile HAL bağımlılıklarını mock'la</span>
+
+<span class="kw">void</span> <span class="fn">test_modbus_crc</span>(<span class="kw">void</span>) {
+    <span class="ty">uint8_t</span> frame[] = {<span class="num">0x01</span>, <span class="num">0x03</span>, <span class="num">0x00</span>, <span class="num">0x00</span>, <span class="num">0x00</span>, <span class="num">0x02</span>};
+    <span class="ty">uint16_t</span> expected = <span class="num">0xC40B</span>;
+    <span class="fn">TEST_ASSERT_EQUAL_HEX16</span>(expected, <span class="fn">calculate_crc</span>(frame, <span class="num">6</span>));
+}
+
+<span class="cm">// Donanıma bağımlı kısımları koşullu derlemeyle izole et</span>
+<span class="pp">#ifdef UNIT_TEST</span>
+    <span class="ty">uint16_t</span> <span class="fn">mock_adc_read</span>(<span class="kw">void</span>) { <span class="kw">return</span> <span class="num">2048</span>; }
+    <span class="pp">#define</span> ADC_Read() <span class="fn">mock_adc_read</span>()
+<span class="pp">#endif</span></code></pre>
+
+      <p>Bu altın kural uzun vadede inanılmaz zaman kazandırır. Kısa vadede yavaşlatıyor gibi görünse de, test olmadan yapılan "hızlı" düzeltmeler genellikle üç kat iş çıkarır.</p>
+    </div>
+
+    <!-- SECTION 3 -->
+    <div class="section" id="s3">
+      <div class="section-num">Aşama 03</div>
+      <h2>Strangler Fig Pattern — Boğmadan Değiştir</h2>
+
+      <p>Martin Fowler'ın tanımladığı bu pattern, eski sistemi bir anda yeniden yazmak yerine yeni kodu yanına yerleştirerek yavaş yavaş ikame etmeyi öngörür — tıpkı bir sarmaşığın ağacı yavaşça sarması gibi.</p>
+
+      <p>Pratikte en başarılı örneklerden biri: bir ödeme sistemi etrafına 150 test yazılmış, olaylar %70 azalmış, ardından modül yavaşça ikame edilmiştir.</p>
+
+      <pre data-lang="C"><code><span class="cm">// ESKİ KOD — henüz dokunma</span>
+<span class="kw">void</span> <span class="fn">old_uart_handler</span>(<span class="kw">void</span>) {
+    <span class="cm">// 200 satır spagetti mantığı...</span>
+}
+
+<span class="cm">// YENİ KOD — temiz, test edilmiş</span>
+<span class="kw">void</span> <span class="fn">new_uart_handler</span>(<span class="kw">void</span>) {
+    <span class="cm">// Yeniden yazılmış, izole edilmiş versiyon</span>
+}
+
+<span class="cm">// KÖPRÜ — geçiş döneminde ikisini birden taşı</span>
+<span class="kw">void</span> <span class="fn">uart_handler</span>(<span class="kw">void</span>) {
+<span class="pp">#ifdef USE_NEW_UART</span>
+    <span class="fn">new_uart_handler</span>();
+<span class="pp">#else</span>
+    <span class="fn">old_uart_handler</span>();
+<span class="pp">#endif</span>
+}</code></pre>
+
+      <blockquote>
+        <p>Refactoring ile fonksiyonel değişikliği asla aynı commit'te karıştırma. İkisi birden gittiğinde ne code review yapılabilir, ne de hata tespiti kolaylaşır.</p>
+      </blockquote>
+    </div>
+
+    <!-- SECTION 4 -->
+    <div class="section" id="s4">
+      <div class="section-num">Aşama 04</div>
+      <h2>Hotspot Analizi — Doğru Şeyi Düzelt</h2>
+
+      <p>Static analiz araçları çoğu zaman binlerce uyarı döker. React.js codebase'inde CodeClimate 8 yıllık teknik borç tespit etmiştir. Hepsini düzeltmeye çalışmak anlamsız. Öncelik formülü:</p>
+
+      <blockquote>
+        <p>Karmaşıklık + Değişim sıklığı = Hotspot. Hiç dokunulmayan karmaşık kod önemsizdir. Sık değiştirilen basit kod ise kritiktir.</p>
+        <cite>— Nicolas Carlo, understandlegacycode.com</cite>
+      </blockquote>
+
+      <p>Teknik borcunu kategorize et:</p>
+
+      <div class="risk-grid">
+        <div class="risk-row">
+          <div><span class="risk-label risk-critical">Kritik</span></div>
+          <div>Stack overflow riski, ISR'da malloc, buffer overflow</div>
+          <div class="risk-priority">→ Hemen</div>
+        </div>
+        <div class="risk-row">
+          <div><span class="risk-label risk-important">Önemli</span></div>
+          <div>Magic number'lar, paylaşılan global state</div>
+          <div class="risk-priority">→ Sprint'e al</div>
+        </div>
+        <div class="risk-row">
+          <div><span class="risk-label risk-improve">İyileştirme</span></div>
+          <div>Kötü isimlendirme, dead code blokları</div>
+          <div class="risk-priority">→ Zamanla</div>
+        </div>
+        <div class="risk-row">
+          <div><span class="risk-label risk-cosmetic">Kozmetik</span></div>
+          <div>Formatting, yorum dili tutarsızlığı</div>
+          <div class="risk-priority">→ Otomasyona</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- SECTION 5 -->
+    <div class="section" id="s5">
+      <div class="section-num">Aşama 05</div>
+      <h2>ADR — Sonraki Geliştiriciyi Kurtar</h2>
+
+      <p>Teknik kararlarını belgele. Architecture Decision Record (ADR) formatı bunun için idealdir: kısa, net, aranabilir. <code>docs/adr/</code> klasörüne kaynak kod yanına koy.</p>
+
+      <pre data-lang="Markdown"><code>## ADR-001: uart_init içindeki HAL_Delay(50)
+
+Tarih: 2026-04-07
+Durum: Aktif
+
+Bağlam:
+  UART init sonrası delay kaldırılınca slave cihaz
+  ilk Modbus frame'ini kaçırıyor.
+
+Karar:
+  Delay bırakıldı. Kök neden: RS-485 transceiver
+  DE/RE pin geçiş süresi + slave bootloader gecikmesi.
+
+Sonuç:
+  Donanım revizyonunda pull-down hızlandırılırsa
+  kaldırılabilir.</code></pre>
+
+      <blockquote>
+        <p>10 ADR, 1000 satır yorumdan değerlidir.</p>
+      </blockquote>
+
+      <p>Yeni başladığında sistemin garip davranışlarını, çözdüğün hataları, "a-ha!" anlarını not et. Ham Markdown notlar bile olsa, bunları kaynak kod yanında tutmak sonraki geliştiriciyi kurtarır.</p>
+    </div>
+
+    <!-- CONCLUSION -->
+    <div class="section" id="sonuc">
+      <div class="section-num">Sonuç</div>
+      <h2>Kültür Problemi Teknik Çözüm İster</h2>
+
+      <p><em>"Çalışıyor, dokunma"</em> kültürü her sektörde, her dilde var. Ama bu kültürü kırmak için değişikliği görünür, izlenebilir ve geri alınabilir yapmak gerekir. Conditional compilation, semantic commit mesajları, version tag'leri ve kısa ADR dosyaları bunun temelidir.</p>
+
+      <p>Ve şunu unutma: legacy kod devralmanın bir "ödülü" de var. Kaotik bir sistemi yavaş yavaş kontrol altına almak, birçok deneyimli geliştirici tarafından kariyerinin en tatmin edici çalışmaları arasında sayılıyor.</p>
+
+      <p><strong>Kolları sıva. Haritayı çıkar. Küçük adımlarla ilerle.</strong></p>
+    </div>
+
+    <!-- REFERENCES -->
+    <div class="refs">
+      <div class="refs-title">Kaynaklar</div>
+      <div class="ref-item">
+        <span class="ref-n">[1]</span>
+        <span>Nicolas Carlo — <em>7 techniques to regain control of your Legacy codebase</em> · <a href="https://understandlegacycode.com/blog/7-techniques-to-regain-control-of-legacy/" target="_blank">understandlegacycode.com</a></span>
+      </div>
+      <div class="ref-item">
+        <span class="ref-n">[2]</span>
+        <span>Erik Dietrich — <em>So, You've Inherited a Legacy Codebase</em> · <a href="https://daedtech.com/youve-inherited-legacy-codebase/" target="_blank">daedtech.com</a></span>
+      </div>
+      <div class="ref-item">
+        <span class="ref-n">[3]</span>
+        <span>Guillaume Gautier — <em>You've just inherited a legacy C++ codebase, now what?</em> · <a href="https://gaultier.github.io/blog/you_inherited_a_legacy_cpp_codebase_now_what.html" target="_blank">gaultier.github.io</a></span>
+      </div>
+      <div class="ref-item">
+        <span class="ref-n">[4]</span>
+        <span>Michael Feathers — <em>Working Effectively with Legacy Code</em> · Prentice Hall, 2004</span>
+      </div>
+      <div class="ref-item">
+        <span class="ref-n">[5]</span>
+        <span>Martin Fowler — <em>Strangler Fig Application</em> · <a href="https://martinfowler.com/bliki/StranglerFigApplication.html" target="_blank">martinfowler.com</a></span>
+      </div>
+    </div>
+
+  </div><!-- /article-body -->
+</div><!-- /container -->
+</main>
+
+<footer>
+  <div class="container">
+    legacy-kod-rehberi · github pages · nisan 2026
+  </div>
+</footer>
+
+<script>
+// Progress bar
+const bar = document.getElementById('progress');
+window.addEventListener('scroll', () => {
+  const h = document.documentElement;
+  const pct = (h.scrollTop / (h.scrollHeight - h.clientHeight)) * 100;
+  bar.style.width = pct + '%';
+});
+
+// Scroll reveal
+const sections = document.querySelectorAll('.section');
+const observer = new IntersectionObserver((entries) => {
+  entries.forEach(e => {
+    if (e.isIntersecting) {
+      e.target.classList.add('visible');
+      observer.unobserve(e.target);
+    }
+  });
+}, { threshold: 0.08 });
+
+sections.forEach(s => observer.observe(s));
+</script>
+</body>
+</html>
