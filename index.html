@@ -432,6 +432,12 @@ footer {
 
   <div class="article-body">
 
+    <p>Bu makaleyi ne tam anlamıyla uyguladığım için ne de teorik bilgimi paylaşmak için yazdım. Altı yıldır embedded yazılım geliştiriyorum ve hâlâ devraldığım sistemlerin önünde ne yapacağımı bilemediğim anlar oluyor.</p>
+
+    <p>Son deneyimim şöyle: Bir kart üzerinde çalışan en az 4 farklı firmware versiyonu vardı. İçlerinde açık <code>TODO</code> ve <code>FIXME</code> yorumları var — neden kapanmamış, kim yazmış, ne zaman, hiçbir izi yok. İlk baktığımda hem "hallederim" dedim hem de "nasıl olacak" diye dertlendim. İkisi aynı anda.</p>
+
+    <p>Bu ikili his sanırım bu işin içinde olan herkesin tanıdığı bir his. O yüzden hem kendim için bir referans oluşturmak hem de benzer durumda olanlara bir şeyler katabilmek için internetteki kaynaklardan da faydalanarak bu dokümanı yazdım.</p>
+
     <p>Reddit'te bir yazılımcı şöyle yazmıştı: <em>"Sıfır dokümantasyonlu, bir iş arkadaşından devralacağım bir .NET Core + Knockout.js projesi var. Nereden başlayacağımı bilmiyorum."</em> Bu his evrensel. Hangi dili, hangi platformu, hangi sektörü kullansanız — bir gün birinin bıraktığı sistemi devralmak zorunda kalırsınız.</p>
 
     <p>Embedded sistemlerde bu durum özellikle ağır hissettiriyor. Belgesiz register konfigürasyonları, magic number'larla dolu interrupt handler'lar, kimsenin dokunmaya cesaret edemediği clock tree ayarları. Ve en kötüsü: <strong>"çalışıyor, dokunma"</strong> kültürü.</p>
@@ -469,7 +475,7 @@ footer {
         <li>Static analiz aracı çalıştır: <code>cppcheck</code>, <code>PC-lint</code></li>
       </ul>
 
-      <pre data-lang="C"><code><span class="cm">// Bir legacy codebase'de karşılaşılan tipik kod kokuları</span>
+      <pre data-lang="C"><code><span class="cm">// Bir legacy codebase'de karşılaşılan tipik code smell'ler (sorunlu kodun uyarı işaretleri)</span>
 
 <span class="cm">// 1. Global değişken cehennemi</span>
 <span class="kw">volatile</span> <span class="ty">uint32_t</span> g_flag1, g_flag2, g_flag_bak, g_flag_bak2;
@@ -490,7 +496,7 @@ footer {
 
       <p>Michael Feathers, <em>Working Effectively with Legacy Code</em> kitabında <strong>"seam"</strong> (dikiş noktası) kavramını tanımlar: kodda test ekleyebileceğin, müdahale edebileceğin izole noktalar. Legacy kod çoğunlukla unit test içermediğinden, değişiklik yaparken kör uçuyorsunuzdur.</p>
 
-      <p>Embedded sistemlerde tam unit test zordur, ama imkânsız değildir. Pratik yaklaşım:</p>
+      <p>Embedded bare-metal projelerde resmi bir test framework'ü genellikle olmaz. Ama bu, test yazılamaz anlamına gelmiyor. Donanımdan bağımsız saf fonksiyonlar için en basit yöntem bile işe yarar. Pratik yaklaşım:</p>
 
       <ol>
         <li>Donanımdan bağımsız, saf fonksiyonları tespit et (CRC, protokol parsing, buffer mantığı)</li>
@@ -498,12 +504,15 @@ footer {
         <li>Her dokunduğun fonksiyona önce test yaz, sonra değiştir</li>
       </ol>
 
-      <pre data-lang="C"><code><span class="cm">// unity veya cmocka ile HAL bağımlılıklarını mock'la</span>
+      <pre data-lang="C"><code><span class="cm">// Framework gerekmez — saf fonksiyonları printf ile test et</span>
 
 <span class="kw">void</span> <span class="fn">test_modbus_crc</span>(<span class="kw">void</span>) {
     <span class="ty">uint8_t</span> frame[] = {<span class="num">0x01</span>, <span class="num">0x03</span>, <span class="num">0x00</span>, <span class="num">0x00</span>, <span class="num">0x00</span>, <span class="num">0x02</span>};
-    <span class="ty">uint16_t</span> expected = <span class="num">0xC40B</span>;
-    <span class="fn">TEST_ASSERT_EQUAL_HEX16</span>(expected, <span class="fn">calculate_crc</span>(frame, <span class="num">6</span>));
+    <span class="ty">uint16_t</span> result = <span class="fn">calculate_crc</span>(frame, <span class="num">6</span>);
+    <span class="kw">if</span> (result != <span class="num">0xC40B</span>)
+        <span class="fn">printf</span>(<span class="st">"FAIL: CRC beklenen=0xC40B, gelen=0x%04X\n"</span>, result);
+    <span class="kw">else</span>
+        <span class="fn">printf</span>(<span class="st">"PASS: CRC\n"</span>);
 }
 
 <span class="cm">// Donanıma bağımlı kısımları koşullu derlemeyle izole et</span>
@@ -512,7 +521,7 @@ footer {
     <span class="pp">#define</span> ADC_Read() <span class="fn">mock_adc_read</span>()
 <span class="pp">#endif</span></code></pre>
 
-      <p>Bu altın kural uzun vadede inanılmaz zaman kazandırır. Kısa vadede yavaşlatıyor gibi görünse de, test olmadan yapılan "hızlı" düzeltmeler genellikle üç kat iş çıkarır.</p>
+      <p>Bu altın kural pratikte çok işe yarıyor. Kısa vadede yavaşlatıyor gibi görünse de, test olmadan yapılan "hızlı" düzeltmeler çoğu zaman üç kat iş çıkarıyor.</p>
     </div>
 
     <!-- SECTION 3 -->
@@ -520,9 +529,7 @@ footer {
       <div class="section-num">Aşama 03</div>
       <h2>Strangler Fig Pattern — Boğmadan Değiştir</h2>
 
-      <p>Martin Fowler'ın tanımladığı bu pattern, eski sistemi bir anda yeniden yazmak yerine yeni kodu yanına yerleştirerek yavaş yavaş ikame etmeyi öngörür — tıpkı bir sarmaşığın ağacı yavaşça sarması gibi.</p>
-
-      <p>Pratikte en başarılı örneklerden biri: bir ödeme sistemi etrafına 150 test yazılmış, olaylar %70 azalmış, ardından modül yavaşça ikame edilmiştir.</p>
+      <p>Martin Fowler'ın tanımladığı bu pattern, eski sistemi bir anda yeniden yazmak yerine yeni kodu yanına yerleştirerek yavaş yavaş ikame etmeyi öngörür — tıpkı bir sarmaşığın ağacı yavaşça sarması gibi. Embedded'da bunu zaten farkında olmadan yapıyoruz: eski fonksiyonu silmeden yanına yenisini yazıp <code>#ifdef</code> ile geçiş kontrolü yapmak aslında tam olarak bu.
 
       <pre data-lang="C"><code><span class="cm">// ESKİ KOD — henüz dokunma</span>
 <span class="kw">void</span> <span class="fn">old_uart_handler</span>(<span class="kw">void</span>) {
@@ -553,14 +560,14 @@ footer {
       <div class="section-num">Aşama 04</div>
       <h2>Hotspot Analizi — Doğru Şeyi Düzelt</h2>
 
-      <p>Static analiz araçları çoğu zaman binlerce uyarı döker. React.js codebase'inde CodeClimate 8 yıllık teknik borç tespit etmiştir. Hepsini düzeltmeye çalışmak anlamsız. Öncelik formülü:</p>
+      <p><code>cppcheck</code> ya da <code>PC-lint</code> çalıştırdığında yüzlerce uyarı döner. Hepsini düzeltmeye çalışmak ne mümkün ne de anlamlı — bazı dosyalara yıllardır kimse dokunmamıştır, dokunmayacaktır da. Öncelik formülü:</p>
 
       <blockquote>
         <p>Karmaşıklık + Değişim sıklığı = Hotspot. Hiç dokunulmayan karmaşık kod önemsizdir. Sık değiştirilen basit kod ise kritiktir.</p>
         <cite>— Nicolas Carlo, understandlegacycode.com</cite>
       </blockquote>
 
-      <p>Teknik borcunu kategorize et:</p>
+      <p>Teknik borç (technical debt) — hızlı çözüm uğruna ertelenen düzeltmelerin birikimi. Bunu önceliğe göre sırala:</p>
 
       <div class="risk-grid">
         <div class="risk-row">
@@ -622,9 +629,9 @@ Sonuç:
       <div class="section-num">Sonuç</div>
       <h2>Kültür Problemi Teknik Çözüm İster</h2>
 
-      <p><em>"Çalışıyor, dokunma"</em> kültürü her sektörde, her dilde var. Ama bu kültürü kırmak için değişikliği görünür, izlenebilir ve geri alınabilir yapmak gerekir. Conditional compilation, semantic commit mesajları, version tag'leri ve kısa ADR dosyaları bunun temelidir.</p>
+      <p><em>"Çalışıyor, dokunma"</em> kültürü her sektörde, her dilde var. Bunu kırmak için değişikliği görünür, izlenebilir ve geri alınabilir yapmak gerekiyor. Conditional compilation, anlamlı commit mesajları, version tag'leri ve kısa ADR dosyaları bunun temelidir.</p>
 
-      <p>Ve şunu unutma: legacy kod devralmanın bir "ödülü" de var. Kaotik bir sistemi yavaş yavaş kontrol altına almak, birçok deneyimli geliştirici tarafından kariyerinin en tatmin edici çalışmaları arasında sayılıyor.</p>
+      <p>Bir de şunu söyleyeyim: bu işin bir "ödülü" de var. Sekiz versiyon arasında hangisinin doğru olduğunu bulmak, o sessiz panikle başlayıp yavaş yavaş sistemi anlamlandırmak — sonunda bir yere varıldığında hissettirdiği şeyi başka bir şeyle karşılaştıramıyorum.</p>
 
       <p><strong>Kolları sıva. Haritayı çıkar. Küçük adımlarla ilerle.</strong></p>
     </div>
